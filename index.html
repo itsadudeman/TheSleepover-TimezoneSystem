@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Sleepover Timezone System (TS.TS)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @font-face {
+            font-family: "SF Pro Display";
+            src: local("-apple-system"), local("SF Pro Display"), local("SF Pro Text"), local(".SFNSDisplay"), local(".SFNSText");
+        }
+        :root {
+            --mono-font: 'Consolas','Monaco','Lucida Console','Liberation Mono','DejaVu Sans Mono','Bitstream Vera Sans Mono','Courier New',monospace;
+            --sans-font: "SF Pro Display",-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Arial",sans-serif;
+        }
+        body {
+            font-family: var(--mono-font);
+            margin: 0; padding: 0;
+            overflow-x: hidden;
+            min-height: 100vh;
+            letter-spacing: -0.5px;
+            position: relative;
+            background-color: #000;
+            color: #fff;
+            cursor: pointer;
+        }
+        #sky-canvas { position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:-1; }
+
+        /* text contrast by sky phase */
+        .sky-light #time-label,.sky-light .section-title,.sky-light .dev-limit-text { text-shadow:0 1px 3px rgba(0,0,0,.35);opacity:.85!important;color:#0d2b4f; }
+        .sky-light #local-clock { color:#03152e; }
+        .sky-light .member-name,.sky-light .member-time { color:#03152e;text-shadow:0 1px 2px rgba(255,255,255,.3); }
+        .sky-dawn #time-label,.sky-dawn .section-title,.sky-dawn #local-clock,
+        .sky-dusk #time-label,.sky-dusk .section-title,.sky-dusk #local-clock { text-shadow:0 1px 4px rgba(0,0,0,.8); }
+
+        .header-bar {
+            font-family:var(--sans-font);
+            background:rgba(0,0,0,.2);
+            padding:12px 24px;
+            font-size:1.1rem;font-weight:600;letter-spacing:normal;
+            border-bottom:1px solid rgba(255,255,255,.1);
+            backdrop-filter:blur(12px);
+            transition:background 8s linear;
+            display:flex;justify-content:space-between;align-items:center;
+        }
+        .sky-light .header-bar,.sky-dawn .header-bar,.sky-dusk .header-bar { background:rgba(0,0,0,.3); }
+
+        .section-divider {
+            height:1px;margin:0 24px;
+            background:linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(255,255,255,.2) 50%,rgba(255,255,255,0) 100%);
+            box-shadow:0 1px 0 rgba(0,0,0,.2);
+        }
+        .section-title {
+            font-family:Arial,sans-serif;font-weight:400;font-size:.85rem;
+            margin-top:32px;margin-bottom:12px;padding:0 24px;
+            opacity:.6;letter-spacing:1px;
+            transition:color 8s linear,text-shadow 8s linear;
+        }
+        .member-row {
+            display:flex;align-items:center;margin-bottom:8px;
+            white-space:nowrap;font-size:.95rem;
+            padding:0 24px;box-sizing:border-box;width:100%;overflow:hidden;
+        }
+        .member-info {
+            flex-shrink:0;display:flex;align-items:center;
+            min-width:320px;font-family:var(--sans-font);font-weight:500;
+        }
+        .member-name { font-weight:700;margin-right:6px; }
+        .member-time { font-family:var(--mono-font);font-weight:normal;font-size:.9rem;opacity:.9; }
+
+        /* Progress bar: canvas-based, with two square dot overlays */
+        .ts-progress {
+            flex-grow:1;min-width:0;
+            position:relative;overflow:hidden;
+            display:flex;align-items:center;
+            height:16px; /* enough room for the canvas + dots */
+        }
+        .progress-canvas {
+            width:100%;height:4px;
+            display:block;
+        }
+        .indicator-dot {
+            position:absolute;
+            width:7px;height:7px;
+            border-radius:1px;
+            top:50%;transform:translateY(-50%);
+            z-index:10;
+        }
+
+        .time-display { font-variant-numeric:tabular-nums;display:inline-block; }
+        .main-container { padding:24px 0 20px;position:relative;z-index:1; }
+        .local-time-section { padding:0 24px;margin-bottom:24px;display:flex;flex-direction:column;box-sizing:border-box;width:100%; }
+        .local-clock-row { display:flex;align-items:center;width:100%;overflow:hidden; }
+        #local-progress-container { flex-grow:1;min-width:0;margin-left:32px;display:flex;align-items:center;overflow:hidden; }
+        .progress-wrapper { width:100%;min-width:0; }
+
+        .footer { margin-top:60px;padding:40px 24px 100px;text-align:center;position:relative;z-index:1;display:flex;flex-direction:column;align-items:center; }
+        .logo-container { position:relative;display:inline-block;max-width:600px;width:100%; }
+        .footer-image { width:100%;height:auto;filter:drop-shadow(0 4px 15px rgba(0,0,0,.6));display:block; }
+        .discord-overlay-link { position:absolute;z-index:2;cursor:pointer; }
+
+        #dev-panel {
+            position:fixed;bottom:0;left:0;right:0;
+            background:rgba(0,0,0,.95);color:#fff;padding:24px;
+            border-top:1px solid rgba(255,255,255,.1);
+            font-family:var(--sans-font);z-index:1000;display:none;
+            box-shadow:0 -20px 60px rgba(0,0,0,1);backdrop-filter:blur(20px);
+        }
+        .dev-slider { width:100%;cursor:pointer;accent-color:#fff;margin:12px 0;height:4px; }
+        .dev-badge { background:#fff;color:#000;padding:3px 10px;font-weight:900;font-size:.7rem;margin-bottom:12px;display:inline-block;border-radius:2px;text-transform:uppercase;letter-spacing:.15em; }
+        #slider-val { font-family:var(--mono-font);font-weight:bold;font-size:1.2rem;color:#fff; }
+        .dev-limit-text { font-family:var(--mono-font);opacity:.4;font-size:.7rem; }
+    </style>
+</head>
+<body class="theme-dark" id="body">
+<div id="sky-canvas"></div>
+
+<div class="header-bar"><span>The Sleepover Timezone System (TS.TS)</span></div>
+
+<div class="main-container">
+    <div class="local-time-section">
+        <div class="text-sm opacity-60 mb-2" id="time-label" style="font-family:Arial,sans-serif;font-weight:400;letter-spacing:1px;">Your current time</div>
+        <div class="local-clock-row">
+            <div class="text-5xl font-light time-display shrink-0" id="local-clock" style="letter-spacing:-2px;min-width:440px;">00:00:00 AM (UTC+0)</div>
+            <div id="local-progress-container">
+                <div class="progress-wrapper" id="local-progress-inner"></div>
+            </div>
+        </div>
+    </div>
+    <div class="section-divider"></div>
+    <div id="members-list"></div>
+
+    <div class="footer">
+        <div class="logo-container" id="logo-container">
+            <img src="https://www.image2url.com/r2/default/images/1778123046664-97f31029-c67d-4a04-9e29-1bb5a3463a0f.png"
+                 alt="The Sleepover Utilities" class="footer-image" id="footer-img">
+            <a href="https://discord.gg/ZZFZ7HJW39" target="_blank" id="discord-link"
+               class="discord-overlay-link" title="Join our Discord"></a>
+        </div>
+    </div>
+</div>
+
+<div id="dev-panel">
+    <div class="dev-badge">Developer Override (F3)</div>
+    <div class="flex justify-between items-end mb-1">
+        <span class="dev-limit-text">00:00</span>
+        <span id="slider-val">INITIALIZING...</span>
+        <span class="dev-limit-text">23:59</span>
+    </div>
+    <input type="range" min="0" max="1439" value="0" class="dev-slider" id="time-slider">
+    <div class="mt-2 text-[10px] opacity-40 uppercase tracking-[0.2em] font-black">System Clock Simulation • Refresh to Reset</div>
+</div>
+
+<audio id="daytime-audio" loop><source src="https://www.image2url.com/r2/default/audio/1778098337934-d312bac8-7b53-4866-953e-2977b13be16f.mp3" type="audio/mpeg"></audio>
+<audio id="nighttime-audio" loop><source src="https://www.image2url.com/r2/default/audio/1778098712374-fde5bf10-374a-429d-b642-cc316ab9d78d.mp3" type="audio/mpeg"></audio>
+
+<script>
+// --- Data ---
+const membersData = {
+    "TS.CO-O": [
+        { name:"Sunny",        user:"esso125",                    offset:7 },
+        { name:"Toasty",       user:"voidaxo",                    offset:8 },
+        { name:"PAGBASA",      user:".what_0",                    offset:8 }
+    ],
+    "TS.OG": [
+        { name:"filename2(1)", user:"selenophilicbriar",          offset:8 },
+        { name:"Nathie",       user:"noobertgoobert",             offset:8 },
+        { name:"Floomy",       user:"goofgoobthemangoicecreamdoggo", offset:7 },
+        { name:"IHasAFaceLULZ",user:"ih4safacelulz",              offset:2 }
+    ],
+    "TS.Members": [
+        { name:"Windows",  user:"someusernameidk6910",   offset:null, special:"EU_DST" },
+        { name:"Ca",       user:"buildogluca",           offset:null, special:"EU_DST" },
+        { name:"VaiNa",    user:"vaina0306_48377",         offset:5.5 },
+        { name:"PAMA",     user:"lxsgarion",             offset:7 },
+        { name:"NULL",     user:"nullcanreturntoyouby",  offset:8 },
+        { name:"Droplet",  user:"winnythecuteman1",       offset:7 },
+        { name:"Roni",     user:"ronithefurry",           offset:8 },
+        { name:"Nuggie",   user:"chickennugs0625",       offset:7 }
+    ]
+};
+
+// --- Sky gradient keyframes ---
+const SKY_KEYS = [
+    { h: 0,  top:'#000005', bot:'#05050f' },
+    { h: 4,  top:'#000008', bot:'#080818' },
+    { h: 5,  top:'#0d0520', bot:'#3a1a0a' },
+    { h: 6,  top:'#1a0a3a', bot:'#c4500a' },
+    { h: 7,  top:'#2255a0', bot:'#e8903a' },
+    { h: 8,  top:'#3a7fd4', bot:'#7eb8f0' },
+    { h: 10, top:'#5090e0', bot:'#a8d0f8' },
+    { h: 14, top:'#4a88dc', bot:'#9acaf4' },
+    { h: 17, top:'#3060b0', bot:'#d07030' },
+    { h: 18, top:'#1a2060', bot:'#e06018' },
+    { h: 19, top:'#0d0f35', bot:'#6a2808' },
+    { h: 20, top:'#050510', bot:'#150808' },
+    { h: 22, top:'#000005', bot:'#05050f' },
+    { h: 24, top:'#000005', bot:'#05050f' },
+];
+
+const BAR_STOPS = (() => {
+    const stops = [];
+    for (let i = 0; i <= 60; i++) {
+        const h = (i / 60) * 24;
+        let k1 = SKY_KEYS[0], k2 = SKY_KEYS[1];
+        for (let j = 0; j < SKY_KEYS.length - 1; j++) {
+            if (h >= SKY_KEYS[j].h && h < SKY_KEYS[j+1].h) { k1 = SKY_KEYS[j]; k2 = SKY_KEYS[j+1]; break; }
+        }
+        const t = Math.max(0, Math.min(1, (h - k1.h) / (k2.h - k1.h)));
+        const c1 = hexToRgb(k1.top), c2 = hexToRgb(k2.top);
+        let r = c1[0]+(c2[0]-c1[0])*t, g = c1[1]+(c2[1]-c1[1])*t, b = c1[2]+(c2[2]-c1[2])*t;
+        const brightness = (r*.299 + g*.587 + b*.114) / 255;
+        if (brightness < 0.08) {
+            const grey = 38 + brightness * 220; 
+            stops.push({ r:grey, g:grey, b:grey+4, a:0.75 });
+        } else {
+            stops.push({ r:Math.min(255,r*1.8), g:Math.min(255,g*1.8), b:Math.min(255,b*1.8), a:0.9 });
+        }
+    }
+    return stops;
+})();
+
+// --- Helpers ---
+function hexToRgb(hex) {
+    return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+}
+function rgbToStr(rgb) { return `rgb(${Math.round(rgb[0])},${Math.round(rgb[1])},${Math.round(rgb[2])})`; }
+function lerpRgb(a,b,t) { return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t]; }
+
+function daynessAt(h) {
+    const hour = ((h % 24) + 24) % 24;
+    if (hour >= 8  && hour < 17)  return 1.0;
+    if (hour >= 5  && hour < 8)   return (hour - 5) / 3;
+    if (hour >= 17 && hour < 20)  return 1 - (hour - 17) / 3;
+    return 0;
+}
+
+function dotStyles(hours24) {
+    const day = daynessAt(hours24);
+    const night = 1 - day;
+    const sR = Math.round(80  + (255 - 80)  * day);
+    const sG = Math.round(60  + (215 - 60)  * day);
+    const sunBg  = `rgb(${sR},${sG},0)`;
+    const sunBox = day > 0.03 ? `0 0 ${Math.round(3 + 9*day)}px rgba(255,215,0,${(day*0.95).toFixed(2)})` : 'none';
+    const mL   = Math.round(80 + (255 - 80) * night);
+    const moonBg  = `rgb(${mL},${mL},${Math.min(255, mL + 12)})`;
+    const moonBox = night > 0.03 ? `0 0 ${Math.round(3 + 8*night)}px rgba(180,200,255,${(night*0.85).toFixed(2)})` : 'none';
+    return { sunBg, sunBox, moonBg, moonBox };
+}
+
+function drawBar(canvas) {
+    const W = canvas.offsetWidth || canvas.parentElement?.offsetWidth || 200;
+    if (canvas.width !== W) canvas.width = W;
+    canvas.height = 4;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, W, 0);
+    for (let i = 0; i <= 60; i++) {
+        const s = BAR_STOPS[i];
+        grad.addColorStop(i / 60, `rgba(${Math.round(s.r)},${Math.round(s.g)},${Math.round(s.b)},${s.a})`);
+    }
+    ctx.clearRect(0, 0, W, 4);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, 4);
+}
+
+const liveRows = []; 
+let localRow = null;
+
+function buildDOM() {
+    const list = document.getElementById('members-list');
+    list.innerHTML = '';
+    for (const [section, members] of Object.entries(membersData)) {
+        const hdr = document.createElement('div');
+        hdr.className = 'section-title';
+        hdr.innerText = section;
+        list.appendChild(hdr);
+        members.forEach(m => {
+            const row = document.createElement('div');
+            row.className = 'member-row';
+            const info = document.createElement('div');
+            info.className = 'member-info';
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'member-name';
+            nameSpan.textContent = `${m.name} (${m.user})`;
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'member-time';
+            const sep = document.createElement('span');
+            sep.style.cssText = 'opacity:.2;margin-left:8px';
+            sep.textContent = '---';
+            info.appendChild(nameSpan); info.appendChild(timeSpan); info.appendChild(sep);
+            row.appendChild(info);
+            const prog = document.createElement('div');
+            prog.className = 'ts-progress';
+            const canvas = document.createElement('canvas');
+            canvas.className = 'progress-canvas';
+            prog.appendChild(canvas);
+            const sunDot = document.createElement('div'); sunDot.className = 'indicator-dot';
+            const moonDot = document.createElement('div'); moonDot.className = 'indicator-dot';
+            prog.appendChild(sunDot); prog.appendChild(moonDot);
+            row.appendChild(prog); list.appendChild(row);
+            liveRows.push({ timeSpan, sunDot, moonDot, canvas, getOffset: () => m.special === 'EU_DST' ? getEUDSTOffset() : m.offset });
+        });
+    }
+    const inner = document.getElementById('local-progress-inner');
+    inner.innerHTML = '';
+    const lp = document.createElement('div'); lp.className = 'ts-progress';
+    const lc = document.createElement('canvas'); lc.className = 'progress-canvas';
+    lp.appendChild(lc);
+    const ls = document.createElement('div'); ls.className = 'indicator-dot';
+    const lm = document.createElement('div'); lm.className = 'indicator-dot';
+    lp.appendChild(ls); lp.appendChild(lm); inner.appendChild(lp);
+    localRow = { timeEl: document.getElementById('local-clock'), sunDot:ls, moonDot:lm, canvas:lc };
+}
+
+function tick() {
+    const now = getCurrentVirtualDate();
+    const localOffset = -new Date().getTimezoneOffset() / 60;
+    const localData = formatTime(now, localOffset);
+    document.getElementById('local-clock').innerText = `${localData.strTime} ${localData.offsetStr}`;
+    document.getElementById('time-label').innerText = isOverridden ? 'Virtual Local Time' : 'Your current time';
+    if (localRow) updateBar(localRow, localData.hours24, localData.minutes);
+    liveRows.forEach(row => {
+        const offset = row.getOffset();
+        const timeData = formatTime(now, offset);
+        row.timeSpan.textContent = `\u2013 ${timeData.strTime} ${timeData.offsetStr}`;
+        updateBar(row, timeData.hours24, timeData.minutes);
+    });
+    if (!isOverridden) {
+        document.getElementById('time-slider').value = (now.getHours() * 60) + now.getMinutes();
+        document.getElementById('slider-val').innerText = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+    }
+}
+
+function updateBar(row, hours24, minutes) {
+    const totalMin = hours24 * 60 + minutes;
+    const pct = totalMin / 1440;
+    const moonPct = ((totalMin + 720) % 1440) / 1440;
+    drawBar(row.canvas);
+    row.sunDot.style.left = `calc(${pct * 100}% - 3.5px)`;
+    row.moonDot.style.left = `calc(${moonPct * 100}% - 3.5px)`;
+    const { sunBg, sunBox, moonBg, moonBox } = dotStyles(hours24);
+    row.sunDot.style.background = sunBg; row.sunDot.style.boxShadow = sunBox;
+    row.moonDot.style.background = moonBg; row.moonDot.style.boxShadow = moonBox;
+}
+
+let currentSkyTop = [0,0,5], currentSkyBot = [5,5,15];
+function getSkyTarget(hours24, minutes) {
+    const totalH = hours24 + minutes / 60;
+    let k1 = SKY_KEYS[0], k2 = SKY_KEYS[1];
+    for (let i = 0; i < SKY_KEYS.length - 1; i++) { if (totalH >= SKY_KEYS[i].h && totalH < SKY_KEYS[i+1].h) { k1=SKY_KEYS[i]; k2=SKY_KEYS[i+1]; break; } }
+    const t = Math.max(0, Math.min(1, (totalH - k1.h) / (k2.h - k1.h)));
+    return { top: lerpRgb(hexToRgb(k1.top), hexToRgb(k2.top), t), bot: lerpRgb(hexToRgb(k1.bot), hexToRgb(k2.bot), t) };
+}
+function updateSky(hours24, minutes, delta) {
+    const target = getSkyTarget(hours24, minutes);
+    const speed = Math.min(1, delta * 0.004);
+    currentSkyTop = lerpRgb(currentSkyTop, target.top, speed);
+    currentSkyBot = lerpRgb(currentSkyBot, target.bot, speed);
+    document.getElementById('sky-canvas').style.background = `linear-gradient(180deg,${rgbToStr(currentSkyTop)} 0%,${rgbToStr(currentSkyBot)} 100%)`;
+    const body = document.getElementById('body');
+    body.classList.remove('sky-dark','sky-dawn','sky-dusk','sky-light');
+    if (hours24 >= 8 && hours24 < 17) body.classList.add('sky-light');
+    else if (hours24 >= 6 && hours24 < 8) body.classList.add('sky-dawn');
+    else if (hours24 >= 17 && hours24 < 20) body.classList.add('sky-dusk');
+    else body.classList.add('sky-dark');
+    handleAudioFading(hours24, minutes);
+}
+
+function getEUDSTOffset() {
+    const now = getCurrentVirtualDate(), yr = now.getFullYear();
+    const s = new Date(yr,2,31); s.setDate(31 - s.getDay());
+    const e = new Date(yr,9,31); e.setDate(31 - e.getDay());
+    return (now >= s && now < e) ? 2 : 1;
+}
+function getCurrentVirtualDate() {
+    const now = new Date();
+    return isOverridden ? new Date(now.getTime() + timeOffsetMinutes * 60000) : now;
+}
+function formatTime(date, offset) {
+    const utc = date.getTime() + date.getTimezoneOffset() * 60000;
+    const d = new Date(utc + 3600000 * offset);
+    const h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    const strTime = `${h12.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')} ${ampm}`;
+    const abs = Math.abs(offset), sign = offset >= 0 ? '+' : '-';
+    const offsetStr = `(UTC${sign}${Math.floor(abs)}${(abs%1)*60 ? ':'+(abs%1)*60 : ''})`;
+    return { strTime, offsetStr, hours24: h, minutes: m };
+}
+
+let audioPrimed = false, isMuted = false;
+const daytimeAudio = document.getElementById('daytime-audio');
+const nighttimeAudio = document.getElementById('nighttime-audio');
+document.body.addEventListener('click', () => {
+    if (!audioPrimed) {
+        Promise.all([daytimeAudio.play(), nighttimeAudio.play()]).then(() => { audioPrimed = true; document.body.style.cursor = 'default'; }).catch(() => {});
+    }
+}, { once: true });
+function handleAudioFading(hours24, minutes) {
+    if (!audioPrimed) return;
+    const tm = hours24 * 60 + minutes;
+    const isDay = tm >= 6*60+30 && tm <= 19*60;
+    const lv = (audio, target) => { if (Math.abs(audio.volume - target) > 0.005) audio.volume += audio.volume < target ? 0.005 : -0.005; else audio.volume = target; };
+    lv(daytimeAudio, (!isMuted && isDay) ? 0.5 : 0); lv(nighttimeAudio,(!isMuted && !isDay) ? 0.5 : 0);
+}
+
+const footerImg = document.getElementById('footer-img');
+const discordLink = document.getElementById('discord-link');
+function positionDiscordLink() {
+    discordLink.style.left = '36%';
+    discordLink.style.top = '81%';
+    discordLink.style.width = '52%';
+    discordLink.style.height = '14%';
+}
+footerImg.complete ? positionDiscordLink() : footerImg.addEventListener('load', positionDiscordLink);
+
+let devModeActive = false, timeOffsetMinutes = 0, isOverridden = false;
+window.addEventListener('keydown', e => {
+    if (e.key === 'F3') { e.preventDefault(); devModeActive = !devModeActive; document.getElementById('dev-panel').style.display = devModeActive ? 'block' : 'none'; }
+    if (e.key.toLowerCase() === 'm') isMuted = !isMuted;
+});
+document.getElementById('time-slider').addEventListener('input', e => {
+    isOverridden = true; const val = parseInt(e.target.value); const rn = new Date(), tgt = new Date(rn);
+    tgt.setHours(Math.floor(val/60), val%60, rn.getSeconds()); timeOffsetMinutes = (tgt.getTime() - rn.getTime()) / 60000;
+    document.getElementById('slider-val').innerText = `${Math.floor(val/60).toString().padStart(2,'0')}:${(val%60).toString().padStart(2,'0')}`;
+    tick();
+});
+
+let rafLastTime = null;
+function skyLoop(ts) {
+    const delta = rafLastTime ? ts - rafLastTime : 16; rafLastTime = ts;
+    const now = getCurrentVirtualDate(); const local = formatTime(now, -new Date().getTimezoneOffset() / 60);
+    updateSky(local.hours24, local.minutes, delta); requestAnimationFrame(skyLoop);
+}
+
+buildDOM();
+requestAnimationFrame(skyLoop);
+setInterval(tick, 1000);
+tick();
+window.addEventListener('resize', () => { if (localRow) drawBar(localRow.canvas); liveRows.forEach(r => drawBar(r.canvas)); });
+</script>
+</body>
+</html>
