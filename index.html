@@ -152,7 +152,9 @@
     <div class="mt-2 text-[10px] opacity-40 uppercase tracking-[0.2em] font-black">System Clock Simulation • Refresh to Reset</div>
 </div>
 
+<!-- Audio Assets -->
 <audio id="daytime-audio" loop><source src="https://www.image2url.com/r2/default/audio/1778098337934-d312bac8-7b53-4866-953e-2977b13be16f.mp3" type="audio/mpeg"></audio>
+<audio id="sunset-audio" loop><source src="https://www.image2url.com/r2/default/audio/1778130163885-cd79efca-c929-44e2-839b-a26339f46587.mp3" type="audio/mpeg"></audio>
 <audio id="nighttime-audio" loop><source src="https://www.image2url.com/r2/default/audio/1778098712374-fde5bf10-374a-429d-b642-cc316ab9d78d.mp3" type="audio/mpeg"></audio>
 
 <script>
@@ -353,11 +355,16 @@ function getSkyTarget(hours24, minutes) {
     const t = Math.max(0, Math.min(1, (totalH - k1.h) / (k2.h - k1.h)));
     return { top: lerpRgb(hexToRgb(k1.top), hexToRgb(k2.top), t), bot: lerpRgb(hexToRgb(k1.bot), hexToRgb(k2.bot), t) };
 }
-function updateSky(hours24, minutes, delta) {
+function updateSky(hours24, minutes, delta, snap = false) {
     const target = getSkyTarget(hours24, minutes);
-    const speed = Math.min(1, delta * 0.004);
-    currentSkyTop = lerpRgb(currentSkyTop, target.top, speed);
-    currentSkyBot = lerpRgb(currentSkyBot, target.bot, speed);
+    if (snap) {
+        currentSkyTop = target.top;
+        currentSkyBot = target.bot;
+    } else {
+        const speed = Math.min(1, delta * 0.004);
+        currentSkyTop = lerpRgb(currentSkyTop, target.top, speed);
+        currentSkyBot = lerpRgb(currentSkyBot, target.bot, speed);
+    }
     document.getElementById('sky-canvas').style.background = `linear-gradient(180deg,${rgbToStr(currentSkyTop)} 0%,${rgbToStr(currentSkyBot)} 100%)`;
     const body = document.getElementById('body');
     body.classList.remove('sky-dark','sky-dawn','sky-dusk','sky-light');
@@ -392,18 +399,64 @@ function formatTime(date, offset) {
 
 let audioPrimed = false, isMuted = false;
 const daytimeAudio = document.getElementById('daytime-audio');
+const sunsetAudio = document.getElementById('sunset-audio');
 const nighttimeAudio = document.getElementById('nighttime-audio');
+
 document.body.addEventListener('click', () => {
     if (!audioPrimed) {
-        Promise.all([daytimeAudio.play(), nighttimeAudio.play()]).then(() => { audioPrimed = true; document.body.style.cursor = 'default'; }).catch(() => {});
+        Promise.all([daytimeAudio.play(), sunsetAudio.play(), nighttimeAudio.play()])
+            .then(() => { 
+                audioPrimed = true; 
+                document.body.style.cursor = 'default'; 
+            })
+            .catch(() => {});
     }
 }, { once: true });
+
 function handleAudioFading(hours24, minutes) {
     if (!audioPrimed) return;
     const tm = hours24 * 60 + minutes;
-    const isDay = tm >= 6*60+30 && tm <= 19*60;
-    const lv = (audio, target) => { if (Math.abs(audio.volume - target) > 0.005) audio.volume += audio.volume < target ? 0.005 : -0.005; else audio.volume = target; };
-    lv(daytimeAudio, (!isMuted && isDay) ? 0.5 : 0); lv(nighttimeAudio,(!isMuted && !isDay) ? 0.5 : 0);
+    
+    // Cross-fade logic targets
+    let dayVol = 0;
+    let sunsetVol = 0;
+    let nightVol = 0;
+
+    if (!isMuted) {
+        // --- Daytime: 6:30 AM (390m) to 5:00 PM (1020m) ---
+        if (tm >= 390 && tm < 1020) dayVol = 0.5;
+        // Fade day out fast as sunset starts: gone by 5:05 PM (1025m)
+        if (tm >= 1020 && tm < 1025) dayVol = 0.5 * (1 - (tm - 1020)/5);
+
+        // --- Sunset: 5:00 PM (1020m) to 6:30 PM (1110m) ---
+        // Reach full volume by 5:05 PM (1025m)
+        if (tm >= 1020 && tm < 1025) sunsetVol = 0.5 * ((tm - 1020)/5);
+        if (tm >= 1025 && tm < 1110) sunsetVol = 0.5;
+        // Fade out sunset as night starts fast (1110m - 1115m)
+        if (tm >= 1110 && tm < 1115) sunsetVol = 0.5 * (1 - (tm - 1110)/5);
+
+        // --- Nighttime: 6:30 PM (1110m) to 6:30 AM (390m) ---
+        // Reach full volume by 6:35 PM (1115m)
+        if (tm >= 1110 && tm < 1115) nightVol = 0.5 * ((tm - 1110)/5);
+        if (tm >= 1115 || tm < 390) nightVol = 0.5;
+        // Fade night out fast as day starts (390m - 395m)
+        if (tm >= 390 && tm < 395) nightVol = 0.5 * (1 - (tm - 390)/5);
+        // Fade day back in fast as night ends (390m - 395m)
+        if (tm >= 390 && tm < 395) dayVol = 0.5 * ((tm - 390)/5);
+    }
+
+    const lv = (audio, target) => { 
+        // Smooth transition to target volume
+        if (Math.abs(audio.volume - target) > 0.005) {
+            audio.volume += audio.volume < target ? 0.005 : -0.005; 
+        } else {
+            audio.volume = target; 
+        }
+    };
+
+    lv(daytimeAudio, dayVol);
+    lv(sunsetAudio, sunsetVol);
+    lv(nighttimeAudio, nightVol);
 }
 
 const footerImg = document.getElementById('footer-img');
@@ -436,6 +489,12 @@ function skyLoop(ts) {
 }
 
 buildDOM();
+
+// Snap sky immediately to correct state before starting loop
+const initialNow = getCurrentVirtualDate();
+const initialLocal = formatTime(initialNow, -new Date().getTimezoneOffset() / 60);
+updateSky(initialLocal.hours24, initialLocal.minutes, 0, true);
+
 requestAnimationFrame(skyLoop);
 setInterval(tick, 1000);
 tick();
