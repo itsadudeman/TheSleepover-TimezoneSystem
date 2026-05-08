@@ -27,6 +27,15 @@
             cursor: pointer;
         }
         #sky-canvas { position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:-1; }
+        #bg-image {
+            position:fixed;top:0;left:0;right:0;bottom:0;
+            pointer-events:none;z-index:-2;
+            background-size:cover;
+            background-position:center;
+            background-repeat:no-repeat;
+            opacity:0;
+            transition:opacity 1s ease;
+        }
 
         .sky-light #time-label, .sky-light .section-title, .sky-light .dev-limit-text { text-shadow:0 1px 3px rgba(0,0,0,.35);opacity:.85!important;color:#0d2b4f; }
         .sky-light #local-clock { color:#03152e; }
@@ -141,6 +150,8 @@
 </head>
 <body class="theme-dark" id="body">
 <div id="sky-canvas"></div>
+<div id="bg-image"></div>
+<input type="file" id="bg-file-input" accept="image/*" style="display:none">
 
 <div class="header-bar">
     <img src="https://www.image2url.com/r2/default/images/1778201124587-bbba954c-70cb-4149-b4fd-0dbab08884ee.png"
@@ -463,6 +474,19 @@ let devModeActive=false, timeOffsetMinutes=0, isOverridden=false;
 window.addEventListener('keydown', e => {
     if (e.key==='F3') { e.preventDefault(); devModeActive=!devModeActive; document.getElementById('dev-panel').style.display=devModeActive?'block':'none'; }
     if (e.key.toLowerCase()==='m') isMuted=!isMuted;
+    if (e.key.toLowerCase()==='i') document.getElementById('bg-file-input').click();
+});
+
+document.getElementById('bg-file-input').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const bg = document.getElementById('bg-image');
+    bg.style.backgroundImage = `url('${url}')`;
+    bg.style.opacity = '1';
+    // Also dim the sky overlay slightly so the image shows through
+    document.getElementById('sky-canvas').style.opacity = '0.72';
+    e.target.value = ''; // allow re-picking same file
 });
 document.getElementById('time-slider').addEventListener('input', e => {
     isOverridden=true;
