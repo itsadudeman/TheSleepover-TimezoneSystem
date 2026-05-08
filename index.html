@@ -53,7 +53,6 @@
         .header-bar {
             font-family: var(--sans-font);
             background: rgba(0,0,0,0.2);
-            /* Restored original padding */
             padding: 12px 24px;
             font-size: 1.1rem;
             font-weight: 600;
@@ -67,7 +66,6 @@
         }
         .sky-light .header-bar, .sky-dawn .header-bar, .sky-dusk .header-bar { background: rgba(0,0,0,0.3); }
 
-        /* Logo: replaces title text, sized to fit comfortably in the header */
         .header-logo {
             height: 24px;
             width: auto;
@@ -439,10 +437,11 @@ function formatTime(date, offset) {
     return { strTime, offsetStr, hours24:h, minutes:m };
 }
 
-let audioPrimed=false, isMuted=false;
+let audioPrimed=false, isMuted=false, isVideoMuted=true;
 const daytimeAudio  = document.getElementById('daytime-audio');
 const sunsetAudio   = document.getElementById('sunset-audio');
 const nighttimeAudio= document.getElementById('nighttime-audio');
+const bgVideo       = document.getElementById('bg-video');
 
 document.body.addEventListener('click', () => {
     if (!audioPrimed) {
@@ -482,6 +481,15 @@ let devModeActive=false, timeOffsetMinutes=0, isOverridden=false;
 window.addEventListener('keydown', e => {
     if (e.key==='F3') { e.preventDefault(); devModeActive=!devModeActive; document.getElementById('dev-panel').style.display=devModeActive?'block':'none'; }
     if (e.key.toLowerCase()==='m') isMuted=!isMuted;
+    
+    // Toggle Video Sound (Key: U)
+    if (e.key.toLowerCase()==='u') {
+        isVideoMuted = !isVideoMuted;
+        bgVideo.muted = isVideoMuted;
+        // Optional visual indicator or console log for feedback
+        console.log("Video Muted State:", isVideoMuted);
+    }
+
     if (e.key.toLowerCase()==='i') document.getElementById('bg-file-input').click();
 });
 
@@ -490,16 +498,14 @@ document.getElementById('bg-file-input').addEventListener('change', e => {
     if (!file) return;
     const url = URL.createObjectURL(file);
     const bgImg   = document.getElementById('bg-image');
-    const bgVideo = document.getElementById('bg-video');
 
     if (file.type.startsWith('video/')) {
-        // Hide image, show video
         bgImg.style.opacity = '0';
         bgImg.style.backgroundImage = '';
         bgVideo.src = url;
+        bgVideo.muted = isVideoMuted; // Maintain current U key state
         bgVideo.style.opacity = '1';
     } else {
-        // Hide video, show image
         bgVideo.style.opacity = '0';
         bgVideo.src = '';
         bgImg.style.backgroundImage = `url('${url}')`;
@@ -509,6 +515,7 @@ document.getElementById('bg-file-input').addEventListener('change', e => {
     document.getElementById('sky-canvas').style.opacity = '0.72';
     e.target.value = '';
 });
+
 document.getElementById('time-slider').addEventListener('input', e => {
     isOverridden=true;
     const val=parseInt(e.target.value), rn=new Date(), tgt=new Date(rn);
@@ -529,7 +536,6 @@ function skyLoop(ts) {
 
 buildDOM();
 
-// Snap sky to correct state immediately on load — no lerp delay
 const initNow   = getCurrentVirtualDate();
 const initLocal = formatTime(initNow, -new Date().getTimezoneOffset()/60);
 updateSky(initLocal.hours24, initLocal.minutes, 0, true);
