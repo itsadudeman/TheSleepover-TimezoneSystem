@@ -44,6 +44,7 @@
             transition:opacity 1s ease;
         }
 
+        /* Theme-specific visual adjustments */
         .sky-light #time-label, .sky-light .section-title, .sky-light .dev-limit-text { text-shadow:0 1px 3px rgba(0,0,0,.35);opacity:.85!important;color:#0d2b4f; }
         .sky-light #local-clock { color:#03152e; }
         .sky-light .member-name, .sky-light .member-time { color:#03152e;text-shadow:0 1px 2px rgba(255,255,255,.3); }
@@ -140,6 +141,8 @@
         .logo-container { position: relative; display: inline-block; max-width: 600px; width: 100%; }
         .footer-image { width: 100%; height: auto; filter: drop-shadow(0 4px 15px rgba(0,0,0,0.6)); display: block; }
         .discord-overlay-link { position: absolute; z-index: 2; cursor: pointer; }
+        
+        /* Developer Panel Styles */
         #dev-panel {
             position: fixed; bottom: 0; left: 0; right: 0;
             background: rgba(0,0,0,0.95); color: #fff; padding: 24px;
@@ -204,25 +207,26 @@
 <script>
 const membersData = {
     "TS.CO-O": [
-        { name:"Sunny",        user:"esso125",                       offset:7  },
-        { name:"Toasty",       user:"voidaxo",                       offset:8  },
-        { name:"PAGBASA",      user:".what_0",                       offset:8  }
+        { name:"Sunny",        user:"esso125",                        offset:7  },
+        { name:"Toasty",       user:"voidaxo",                        offset:8  },
+        { name:"PAGBASA",      user:".what_0",                        offset:8  }
     ],
     "TS.OG": [
         { name:"filename2(1)", user:"selenophilicbriar",             offset:8  },
-        { name:"Nathie",       user:"noobertgoobert",                offset:8  },
+        { name:"Nathie",       user:"noobertgoobert",                 offset:8  },
         { name:"Floomy",       user:"goofgoobthemangoicecreamdoggo", offset:7  },
-        { name:"IHasAFaceLULZ",user:"ih4safacelulz",                 offset:2  }
+        { name:"IHasAFaceLULZ",user:"ih4safacelulz",                  offset:2  }
     ],
     "TS.Members": [
         { name:"Windows",  user:"someusernameidk6910",   offset:null, special:"EU_DST" },
-        { name:"Ca",       user:"buildogluca",           offset:null, special:"EU_DST" },
+        // Removed Ca as requested
         { name:"VaiNa",    user:"vaina0306_48377",        offset:5.5  },
         { name:"PAMA",     user:"lxsgarion",             offset:7    },
         { name:"NULL",     user:"nullcanreturntoyouby",  offset:8    },
-        { name:"Droplet",  user:"winnythecuteman1",       offset:7    },
+        { name:"Droplet",  user:"winnythecuteman1",        offset:7    },
         { name:"Roni",     user:"ronithefurry",           offset:8    },
         { name:"Nuggie",   user:"chickennugs0625",        offset:7    },
+        { name:"Fuzzy",    user:"fabianzapillow",         offset:-5   }, // Added Fuzzy as requested
         { name:"ᛗ\\muffin۞matt/𓂀", user:"amethyst8174", offset:-7   }
     ]
 };
@@ -438,10 +442,10 @@ function formatTime(date, offset) {
 }
 
 let audioPrimed=false, isMuted=false, isVideoMuted=true;
-const daytimeAudio  = document.getElementById('daytime-audio');
-const sunsetAudio   = document.getElementById('sunset-audio');
+const daytimeAudio   = document.getElementById('daytime-audio');
+const sunsetAudio    = document.getElementById('sunset-audio');
 const nighttimeAudio= document.getElementById('nighttime-audio');
-const bgVideo       = document.getElementById('bg-video');
+const bgVideo        = document.getElementById('bg-video');
 
 document.body.addEventListener('click', () => {
     if (!audioPrimed) {
@@ -486,7 +490,6 @@ window.addEventListener('keydown', e => {
     if (e.key.toLowerCase()==='u') {
         isVideoMuted = !isVideoMuted;
         bgVideo.muted = isVideoMuted;
-        // Optional visual indicator or console log for feedback
         console.log("Video Muted State:", isVideoMuted);
     }
 
@@ -503,7 +506,7 @@ document.getElementById('bg-file-input').addEventListener('change', e => {
         bgImg.style.opacity = '0';
         bgImg.style.backgroundImage = '';
         bgVideo.src = url;
-        bgVideo.muted = isVideoMuted; // Maintain current U key state
+        bgVideo.muted = isVideoMuted; 
         bgVideo.style.opacity = '1';
     } else {
         bgVideo.style.opacity = '0';
